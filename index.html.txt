@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>炫酷转盘抽奖小程序</title>
+<style>
+  body {
+    font-family: "Microsoft YaHei", sans-serif;
+    text-align: center;
+    background: linear-gradient(to bottom, #ffe6e6, #fff);
+    padding: 20px;
+  }
+  h1 {
+    color: #d32f2f;
+    text-shadow: 1px 1px 2px #aaa;
+  }
+  #canvasContainer {
+    position: relative;
+    width: 90vw;
+    max-width: 400px;
+    height: 90vw;
+    max-height: 400px;
+    margin: 20px auto;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    box-shadow: 0 0 20px rgba(0,0,0,0.3);
+  }
+  #pointer {
+    position: absolute;
+    top: -10px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 0; 
+    height: 0; 
+    border-left: 20px solid transparent;
+    border-right: 20px solid transparent;
+    border-bottom: 40px solid red;
+    z-index: 10;
+    animation: blink 1s infinite;
+  }
+  @keyframes blink {
+    0%, 50%, 100% {opacity: 1;}
+    25%, 75% {opacity: 0.3;}
+  }
+  input {
+    padding: 8px;
+    margin: 5px;
+    width: 40%;
+    max-width: 200px;
+    border-radius: 4px;
+    border: 1px solid #ccc;
+  }
+  button {
+    padding: 10px 25px;
+    margin: 10px;
+    font-size: 16px;
+    cursor: pointer;
+    border-radius: 8px;
+    border: none;
+    color: #fff;
+    background: linear-gradient(to right, #ff6f61, #d32f2f);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+  }
+  #result {
+    font-size: 20px;
+    color: #d32f2f;
+    margin-top: 15px;
+    min-height: 24px;
+  }
+  table {
+    margin: 20px auto;
+    border-collapse: collapse;
+    width: 90%;
+    max-width: 600px;
+  }
+  th, td {
+    border: 1px solid #999;
+    padding: 8px;
+    text-align: center;
+  }
+  th {
+    background: #f2f2f2;
+  }
+</style>
+</head>
+<body>
+
+<h1>炫酷转盘抽奖小程序</h1>
+
+<div>
+  <input type="text" id="name" placeholder="请输入姓名">
+  <input type="text" id="unit" placeholder="请输入单位">
+  <br>
+  <button onclick="startDraw()">抽奖</button>
+  <button onclick="saveRecords()">导出记录</button>
+</div>
+
+<div id="canvasContainer">
+  <canvas id="wheel" width="400" height="400"></canvas>
+  <div id="pointer"></div>
+</div>
+
+<div id="result"></div>
+
+<h2>中奖历史记录</h2>
+<table id="recordTable">
+  <thead>
+    <tr>
+      <th>序号</th>
+      <th>姓名</th>
+      <th>单位</th>
+      <th>奖项</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<audio id="spinSound" src="https://www.soundjay.com/button/sounds/button-16.mp3" preload="auto"></audio>
+<audio id="winSound" src="https://www.soundjay.com/button/sounds/button-10.mp3" preload="auto"></audio>
+
+<script>
+const totalParticipants = 200;
+const awards = {"一等奖":3,"二等奖":5,"三等奖":10};
+const participationCount = totalParticipants - Object.values(awards).reduce((a,b)=>a+b,0);
+awards["参与奖"] = participationCount;
+
+let prizePool = [];
+for(const [award,count] of Object.entries(awards)){
+  for(let i=0;i<count;i++) prizePool.push(award);
+}
+prizePool = prizePool.sort(()=>Math.random()-0.5);
+
+const awardColors = {"一等奖":"#FFD700","二等奖":"#C0C0C0","三等奖":"#CD7F32","参与奖":"#90EE90"};
+let records=[];
+
+const canvas = document.getElementById("wheel");
+const ctx = canvas.getContext("2d");
+const centerX = canvas.width/2;
+const centerY = canvas.height/2;
+const radius = 180;
+
+function drawWheel(){
+  const len = prizePool.length;
+  const anglePer = 2*Math.PI/len;
+  for(let i=0;i<len;i++){
+    const start = i*anglePer;
+    const end = start + anglePer;
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    const prize = prizePool[i];
+    ctx.fillStyle = awardColors[prize] || "#fff";
+    ctx.arc(centerX, centerY, radius, start, end);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.save();
+    ctx.translate(centerX, centerY);
+    ctx.rotate(start + anglePer/2);
+    ctx.fillStyle = "#000";
+    ctx.font = "16px Microsoft YaHei";
+    ctx.textAlign = "right";
+    ctx.fillText(prize, radius-10, 5);
+    ctx.restore();
+  }
+}
+
+drawWheel();
+
+let spinning = false;
+let currentAngle = 0;
+
+function startDraw(){
+  if(spinning) return;
+
+  const name = document.getElementById("name").value.trim();
+  const unit = document.getElementById("unit").value.trim();
+  if(!name||!unit){
+    alert("请填写姓名和单位！");
+    return;
+  }
+  if(prizePool.length===0){
+    alert("奖池已空！");
+    return;
+  }
+
+  spinning = true;
+  const spinAudio = document.getElementById("spinSound");
+  spinAudio.currentTime = 0;
+  spinAudio.play();
+
+  const targetIndex = Math.floor(Math.random()*prizePool.length);
+  const totalAngle = 10*2*Math.PI + (targetIndex*(2*Math.PI/prizePool.length));
+  const duration = 4000;
+  const startTime = performance.now();
+
+  function animate(now){
+    const elapsed = now-startTime;
+    const progress = Math.min(elapsed/duration,1);
+    const easeOut = 1 - Math.pow(1-progress,3);
+    currentAngle = easeOut*totalAngle;
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.save();
+    ctx.translate(centerX,centerY);
+    ctx.rotate(currentAngle);
+    ctx.translate(-centerX,-centerY);
+    drawWheel();
+    ctx.restore();
+
+    if(progress<1){
+      requestAnimationFrame(animate);
+    } else {
+      spinning=false;
+      spinAudio.pause();
+      const prize = prizePool.splice(targetIndex,1)[0];
+      records.push({name,unit,prize});
+      document.getElementById("result").innerText = `${name}，恭喜您抽中了：${prize}！`;
+      document.getElementById("winSound").play();
+      updateRecordTable();
+    }
+  }
+
+  requestAnimationFrame(animate);
+}
+
+function updateRecordTable(){
+  const tbody = document.getElementById("recordTable").getElementsByTagName("tbody")[0];
+  tbody.innerHTML = "";
+  records.forEach((r,index)=>{
+    const row = tbody.insertRow();
+    row.insertCell(0).innerText = index+1;
+    row.insertCell(1).innerText = r.name;
+    row.insertCell(2).innerText = r.unit;
+    row.insertCell(3).innerText = r.prize;
+  });
+}
+
+function saveRecords(){
+  if(records.length===0){
+    alert("没有抽奖记录！");
+    return;
+  }
+  let csvContent="姓名,单位,奖项\n";
+  records.forEach(r=>{csvContent+=`${r.name},${r.unit},${r.prize}\n`;});
+  const blob = new Blob([csvContent], {type:"text/csv;charset=utf-8;"});
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = "抽奖记录.csv";
+  link.click();
+}
+</script>
+
+</body>
+</html>
